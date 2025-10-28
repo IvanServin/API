@@ -17,24 +17,23 @@ def chat():
     if not nombre_personaje or not contexto or not mensaje_usuario or not apodo_usuario:
         return jsonify({'error': 'Faltan datos'}), 400
 
-    # Construir el prompt como lo haces en tu PHP
-    system_prompt = f"Eres {nombre_personaje}. {contexto} Responde siempre como si fueras {nombre_personaje}, usando su personalidad y forma de hablar. El usuario se llama {apodo_usuario}, refiérete a él por su apodo. No digas que eres un asistente, eres el personaje."
-    
-    prompt = f"{system_prompt}\n\n{apodo_usuario}: {mensaje_usuario}\n\n{nombre_personaje}:"
+    # FORMATO ORIGINAL QUE FUNCIONABA BIEN
+    system_prompt = contexto
+    prompt = f"<s>[INST] {system_prompt}\n{apodo_usuario}: {mensaje_usuario} [/INST] {nombre_personaje}:"
 
+    respuesta = ""
     try:
-        # Usar la API REST directa (como en tu prueba)
         url = "https://api.together.xyz/v1/completions"
         headers = {
             "Authorization": f"Bearer {TOGETHER_API_KEY}",
             "Content-Type": "application/json"
         }
         data = {
-            "model": "mistralai/Mistral-7B-Instruct-v0.1",
+            "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",  # MODELO ORIGINAL
             "prompt": prompt,
             "max_tokens": 150,
             "temperature": 0.7,
-            "stop": [f"\n{apodo_usuario}:", f"{nombre_personaje}:"],
+            "stop": ["</s>", f"\n{apodo_usuario}:", f"{apodo_usuario}:", f"{nombre_personaje}:", "\n\n"],  # STOPS ORIGINALES
             "repetition_penalty": 1.2
         }
 
@@ -43,14 +42,12 @@ def chat():
         if response.status_code == 200:
             result = response.json()
             respuesta = result['choices'][0]['text'].strip()
+            respuesta = respuesta.split(f"{apodo_usuario}:")[0].split(f"{nombre_personaje}:")[0].strip()
             
-            # Limpiar la respuesta
-            if respuesta:
-                respuesta = respuesta.split(f"{apodo_usuario}:")[0].split(f"{nombre_personaje}:")[0].strip()
-            else:
-                respuesta = "Lo siento, no pude generar una respuesta en este momento."
+            if not respuesta:
+                respuesta = "Lo siento, la IA no pudo generar una respuesta en este momento."
         else:
-            respuesta = f"Error en la API: {response.status_code}"
+            respuesta = "Lo siento, ocurrió un error al procesar tu solicitud."
 
     except Exception as e:
         respuesta = "Lo siento, ocurrió un error al procesar tu solicitud."
