@@ -1,11 +1,10 @@
 from flask import Flask, request, jsonify
+import requests
 import os
-from together import Together
 
 app = Flask(__name__)
 
-os.environ["TOGETHER_API_KEY"] = "tgp_v1_PIjZvu20Ljfly1KpASmkyV3efe5Y0BuhPmX7JGg5gTQ"
-client = Together(api_key=os.environ["TOGETHER_API_KEY"])
+TOGETHER_API_KEY = "tgp_v1_PIjZvu20Ljfly1KpASmkyV3efe5Y0BuhPmX7JGg5gTQ"
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -18,50 +17,49 @@ def chat():
     if not nombre_personaje or not contexto or not mensaje_usuario or not apodo_usuario:
         return jsonify({'error': 'Faltan datos'}), 400
 
-    system_prompt = contexto
-    prompt = f"<s>[INST] {system_prompt}\n{apodo_usuario}: {mensaje_usuario} [/INST] {nombre_personaje}:"
+    # Construir el prompt como lo haces en tu PHP
+    system_prompt = f"Eres {nombre_personaje}. {contexto} Responde siempre como si fueras {nombre_personaje}, usando su personalidad y forma de hablar. El usuario se llama {apodo_usuario}, refiérete a él por su apodo. No digas que eres un asistente, eres el personaje."
+    
+    prompt = f"{system_prompt}\n\n{apodo_usuario}: {mensaje_usuario}\n\n{nombre_personaje}:"
 
-    respuesta = ""
     try:
-        response = client.completions.create(
-            model="mistralai/Mixtral-8x7B-Instruct-v0.1",
-            prompt=prompt,
-            max_tokens=150,
-            temperature=0.7,
-            stop=["</s>", f"\n{apodo_usuario}:", f"{apodo_usuario}:", f"{nombre_personaje}:", "\n\n"],
-            repetition_penalty=1.2
-        )
+        # Usar la API REST directa (como en tu prueba)
+        url = "https://api.together.xyz/v1/completions"
+        headers = {
+            "Authorization": f"Bearer {TOGETHER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": "mistralai/Mistral-7B-Instruct-v0.1",
+            "prompt": prompt,
+            "max_tokens": 150,
+            "temperature": 0.7,
+            "stop": [f"\n{apodo_usuario}:", f"{nombre_personaje}:"],
+            "repetition_penalty": 1.2
+        }
+
+        response = requests.post(url, json=data, headers=headers)
         
-        # MANEJO ROBUSTO DE LA RESPUESTA
-        if hasattr(response, 'choices') and response.choices and len(response.choices) > 0:
-            if hasattr(response.choices[0], 'text'):
-                respuesta = response.choices[0].text.strip()
-            else:
-                respuesta = "Error: Formato de respuesta inesperado"
-        else:
-            respuesta = "No se pudo generar una respuesta."
-        
-        # Limpiar la respuesta
-        if respuesta and respuesta != "Error: Formato de respuesta inesperado":
-            respuesta = respuesta.split(f"{apodo_usuario}:")[0].split(f"{nombre_personaje}:")[0].strip()
-        
-        if not respuesta:
-            respuesta = "Lo siento, la IA no pudo generar una respuesta en este momento."
+        if response.status_code == 200:
+            result = response.json()
+            respuesta = result['choices'][0]['text'].strip()
             
-    except Exception as e:
-        # MANEJAR ERROR SIN PROPAGAR DETALLES TÉCNICOS DE PYTHON
-        error_msg = str(e)
-        # Si el error contiene información de Pydantic, dar un mensaje genérico
-        if 'pydantic' in error_msg.lower() or 'validation' in error_msg.lower():
-            respuesta = "Lo siento, ocurrió un error al procesar tu solicitud. Por favor, intenta nuevamente."
+            # Limpiar la respuesta
+            if respuesta:
+                respuesta = respuesta.split(f"{apodo_usuario}:")[0].split(f"{nombre_personaje}:")[0].strip()
+            else:
+                respuesta = "Lo siento, no pude generar una respuesta en este momento."
         else:
-            respuesta = f"Lo siento, ocurrió un error: {error_msg}"
+            respuesta = f"Error en la API: {response.status_code}"
+
+    except Exception as e:
+        respuesta = "Lo siento, ocurrió un error al procesar tu solicitud."
 
     return jsonify({'respuesta': respuesta})
 
 @app.route('/healthz', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'healthy', 'message': 'API is running'})
+    return jsonify({'status': 'healthy'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
